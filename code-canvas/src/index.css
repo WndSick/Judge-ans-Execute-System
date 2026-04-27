@@ -1,0 +1,147 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Forge — Premium developer-tool design system. All colors HSL. */
+
+@layer base {
+  :root {
+    /* Light fallback — app is dark-first */
+    --background: 220 20% 98%;
+    --foreground: 222 47% 8%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 8%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 8%;
+    --primary: 222 47% 11%; /* Neutral primary for light */
+    --primary-foreground: 210 40% 98%;
+    --secondary: 220 14% 94%;
+    --secondary-foreground: 222 47% 8%;
+    --muted: 220 14% 94%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 222 47% 11%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 90%;
+    --input: 220 13% 90%;
+    --ring: 222 47% 11%;
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    /* Surfaces */
+    --background: 224 24% 4%;
+    --foreground: 210 40% 98%;
+
+    --card: 224 24% 6%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 224 24% 7%;
+    --popover-foreground: 210 40% 98%;
+
+    /* Brand: Clean Mint */
+    --primary: 158 84% 52%;
+    --primary-foreground: 222 47% 4%;
+
+    --secondary: 224 16% 12%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 224 16% 10%;
+    --muted-foreground: 220 12% 56%;
+
+    /* Status */
+    --success: 152 76% 50%;
+    --warning: 35 95% 60%;
+    --destructive: 0 84% 62%;
+    --destructive-foreground: 0 0% 100%;
+    --info: 210 95% 65%;
+
+    /* Difficulty colors (grounded) */
+    --easy: 152 76% 50%;
+    --medium: 38 95% 55%;
+    --hard: 0 84% 62%;
+
+    --border: 224 16% 14%;
+    --input: 224 16% 14%;
+    --ring: 158 84% 52%;
+
+    /* Normalized Gradients & Shadows */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    
+    --shadow-glow: 0 0 0 1px hsl(158 84% 52% / 0.15), 0 8px 30px -10px hsl(158 84% 52% / 0.2);
+    --shadow-elevated: 0 20px 50px -12px rgb(0 0 0 / 0.5);
+
+    /* Clean background mesh */
+    --gradient-mesh: radial-gradient(at 0% 0%, hsl(158 84% 52% / 0.05) 0px, transparent 50%),
+                     radial-gradient(at 100% 0%, hsl(220 84% 52% / 0.03) 0px, transparent 50%);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html, body, #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    background-color: hsl(var(--background));
+    background-image: var(--gradient-mesh);
+    background-attachment: fixed;
+  }
+  ::selection {
+    background: hsl(var(--primary) / 0.2);
+    color: hsl(var(--foreground));
+  }
+  /* Refined scrollbars */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.3); }
+}
+
+@layer components {
+  .font-display { font-family: 'Space Grotesk', 'Inter', sans-serif; letter-spacing: -0.01em; }
+  .font-mono { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  .shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+  .shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(110deg, transparent 30%, hsl(0 0% 100% / 0.04) 50%, transparent 70%);
+    transform: translateX(-100%);
+    animation: shimmer 2s infinite;
+  }
+
+  .glow-primary { box-shadow: var(--shadow-glow); }
+}
+
+@layer utilities {
+  .transition-all { transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1); }
+  .shadow-glow { box-shadow: var(--shadow-glow); }
+  .shadow-elevated { box-shadow: var(--shadow-elevated); }
+}
+
+@keyframes shimmer {
+  to { transform: translateX(100%); }
+}
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}

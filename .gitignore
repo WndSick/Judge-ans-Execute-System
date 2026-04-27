@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+dist/
+build/
+.env
+
+# Go
+executor/executor
+executor/*.exe
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
