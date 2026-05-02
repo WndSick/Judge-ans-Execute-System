@@ -1,8 +1,10 @@
 import { Check, Clock, Cpu, Loader2, TimerReset, X, Zap, AlertTriangle, Terminal, Activity } from "lucide-react";
-import type { Submission } from "@/lib/types";
+import type { RunResult, Submission } from "@/lib/types";
 
 interface Props {
   submission?: Submission;
+  runResult?: RunResult;
+  isRunning: boolean;
   isSubmitting: boolean;
 }
 
@@ -15,12 +17,71 @@ const RESULT_THEME: Record<string, { label: string; color: string; bg: string; i
   "Internal Error": { label: "Internal Error", color: "text-red-500",   bg: "bg-red-500/5 border-red-500/20",   icon: <AlertTriangle className="h-5 w-5" /> },
 };
 
-export const ResultPanel = ({ submission, isSubmitting }: Props) => {
-  if (!submission && !isSubmitting) {
+const RUN_RESULT_THEME: Record<string, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
+  success: { label: "Run Passed", color: "text-green-500", bg: "bg-green-500/5 border-green-500/20", icon: <Check className="h-5 w-5" /> },
+  wa: { label: "Wrong Answer", color: "text-red-500", bg: "bg-red-500/5 border-red-500/20", icon: <X className="h-5 w-5" /> },
+  tle: { label: "Time Limit Exceeded", color: "text-yellow-500", bg: "bg-yellow-500/5 border-yellow-500/20", icon: <Clock className="h-5 w-5" /> },
+  re: { label: "Runtime Error", color: "text-red-500", bg: "bg-red-500/5 border-red-500/20", icon: <AlertTriangle className="h-5 w-5" /> },
+  ce: { label: "Compile Error", color: "text-red-500", bg: "bg-red-500/5 border-red-500/20", icon: <AlertTriangle className="h-5 w-5" /> },
+  error: { label: "Internal Error", color: "text-red-500", bg: "bg-red-500/5 border-red-500/20", icon: <AlertTriangle className="h-5 w-5" /> },
+};
+
+export const ResultPanel = ({ submission, runResult, isRunning, isSubmitting }: Props) => {
+  if (!submission && !runResult && !isSubmitting && !isRunning) {
     return (
       <div className="flex h-full flex-col items-center justify-center px-6 text-center text-muted-foreground/40">
         <Activity className="h-6 w-6 mb-3 opacity-20" />
         <p className="text-[10px] font-bold uppercase tracking-widest">Execute code to see results</p>
+      </div>
+    );
+  }
+
+  if (isRunning) {
+    return (
+      <div className="flex h-full flex-col gap-6 px-6 py-6 animate-fade-in">
+        <div className="flex items-center gap-4">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Loader2 className="h-5 w-5 animate-spin" />
+          </div>
+          <div>
+            <div className="text-sm font-bold uppercase tracking-widest">Running Sample Tests…</div>
+            <span className="text-[10px] text-muted-foreground font-mono">Synchronous execution in progress</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (runResult) {
+    const theme = RUN_RESULT_THEME[runResult.status] || RUN_RESULT_THEME.error;
+    return (
+      <div className="flex h-full flex-col gap-6 px-6 py-6 animate-fade-in overflow-y-auto">
+        <div className={`rounded-xl border p-4 ${theme.bg}`}>
+          <div className="flex items-center gap-3">
+            <div className={`${theme.color}`}>{theme.icon}</div>
+            <div className={`text-lg font-bold uppercase tracking-widest ${theme.color}`}>{theme.label}</div>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <Metric icon={<Cpu className="h-3 w-3" />} label="Runtime" value={fmt(runResult.runtime)} />
+          <Metric icon={<Check className="h-3 w-3" />} label="Passed" value={`${runResult.passed ?? 0}`} />
+          <Metric icon={<Zap className="h-3 w-3" />} label="Total" value={`${runResult.total ?? 0}`} />
+        </div>
+        {runResult.failedTestCaseIndex != null && (
+          <div className="space-y-3 rounded-xl border border-border/40 bg-secondary/10 p-4">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              Failed Sample #{runResult.failedTestCaseIndex + 1}
+            </div>
+            <DiffBlock title="Input" value={runResult.input} />
+            <DiffBlock title="Expected" value={runResult.expected} />
+            <DiffBlock title="Actual" value={runResult.actual} />
+          </div>
+        )}
+        {runResult.message && (
+          <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-[11px] text-red-200">
+            {runResult.message}
+          </div>
+        )}
       </div>
     );
   }
@@ -119,6 +180,15 @@ export const ResultPanel = ({ submission, isSubmitting }: Props) => {
     </div>
   );
 };
+
+const DiffBlock = ({ title, value }: { title: string; value?: string }) => (
+  <div>
+    <div className="mb-1.5 text-[9px] text-muted-foreground/60 uppercase tracking-widest font-bold">{title}</div>
+    <div className="rounded-lg border border-border/40 bg-black/30 p-3 font-mono text-[11px] whitespace-pre-wrap">
+      {value || "—"}
+    </div>
+  </div>
+);
 
 const Metric = ({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) => (
   <div className="rounded-xl border border-border/40 bg-secondary/10 p-2.5 transition-all hover:bg-secondary/20">

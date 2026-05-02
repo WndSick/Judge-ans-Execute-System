@@ -44,7 +44,7 @@ export const getProblemById = asyncHandler(async (req: Request, res: Response) =
 });
 
 export const updateProblem = asyncHandler(async (req: Request, res: Response) => {
-  const problem = await problemService.updateProblemById(req.params.id as string, req.body);
+  const problem = await problemService.updateProblem(req.params.id as string, req.body);
   if (!problem) {
     const error: CustomError = new Error("Problem not found");
     error.statusCode = 404;
@@ -61,7 +61,7 @@ export const deleteProblem = asyncHandler(async (req: Request, res: Response) =>
     throw error;
   }
 
-  await problemService.deleteProblemById(req.params.id as string);
+  await problemService.deleteProblem(req.params.id as string);
   res.status(200).json({ message: "Problem deleted" });
 });
 
@@ -83,7 +83,7 @@ export const createContest = asyncHandler(async (req: Request, res: Response) =>
 });
 
 export const listContests = asyncHandler(async (_req: Request, res: Response) => {
-  const contests = await contestService.getAllContests();
+  const contests = await contestService.getUpcomingAndActiveContests();
   res.status(200).json(contests);
 });
 
@@ -98,7 +98,7 @@ export const getContestById = asyncHandler(async (req: Request, res: Response) =
 });
 
 export const updateContest = asyncHandler(async (req: Request, res: Response) => {
-  const contest = await contestService.updateContestById(req.params.id as string, req.body);
+  const contest = await contestService.updateContest(req.params.id as string, req.body);
   if (!contest) {
     const error: CustomError = new Error("Contest not found");
     error.statusCode = 404;
@@ -115,7 +115,7 @@ export const deleteContest = asyncHandler(async (req: Request, res: Response) =>
     throw error;
   }
 
-  await contestService.deleteContestById(req.params.id as string);
+  await contestService.deleteContest(req.params.id as string);
   res.status(200).json({ message: "Contest deleted" });
 });
 

@@ -1,16 +1,18 @@
-FROM golang:latest
+FROM golang:1.21-alpine
 
 WORKDIR /app
 
+# Install git and other dependencies if needed
+RUN apk add --no-cache git
+
+# Copy go.mod and go.sum first for better caching
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy the rest of the source
 COPY . .
 
-RUN go mod init executor
-RUN go get github.com/docker/distribution@v2.8.2+incompatible
-RUN go get github.com/docker/docker@v24.0.7
-RUN go get github.com/docker/go-connections/nat@v0.4.0
-RUN go mod tidy
-RUN go mod tidy
-
+# Build the binary
 RUN go build -o executor .
 
 EXPOSE 8080

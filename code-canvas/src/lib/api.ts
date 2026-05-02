@@ -1,4 +1,4 @@
-import type { Language, Problem, ProblemSummary, Submission } from "./types";
+import type { Language, Problem, ProblemSummary, RunResult, Submission } from "./types";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") || "";
 
@@ -74,6 +74,20 @@ export async function submitCode(payload: {
   return http<{ submissionId: string }>("/submit", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export async function runCode(payload: {
+  problemId: string;
+  language: "cpp" | "python";
+  code: string;
+}): Promise<RunResult> {
+  return http<RunResult>(`/problems/${payload.problemId}/run`, {
+    method: "POST",
+    body: JSON.stringify({
+      language: payload.language,
+      code: payload.code
+    }),
   });
 }
 

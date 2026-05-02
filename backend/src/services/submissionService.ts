@@ -29,7 +29,7 @@ export const createSubmission = async ({
 
   const now = new Date();
 
-  // If problem is NOT public, it MUST be part of an active contest to be submitted
+  // Private problems can only be submitted within the active contest context.
   if (!problem.isPublic) {
     const activeContest = await Contest.findOne({
       problemIds: problem._id,
@@ -49,10 +49,16 @@ export const createSubmission = async ({
       throw error;
     }
   } else {
-    // If it is public, contestId is optional, but if provided, it must be valid for the contest context
+    // Public problems support normal practice submissions without contest context.
+    // If contestId is provided, validate that the contest is active and contains the problem.
     if (contestId) {
       const contest = await Contest.findById(contestId);
-      if (!contest || !contest.problemIds.some(id => id.toString() === problemId)) {
+      const isActive = contest ? now >= contest.startTime && now < contest.endTime : false;
+      const includesProblem = contest
+        ? contest.problemIds.some((id) => id.toString() === problemId)
+        : false;
+
+      if (!contest || !isActive || !includesProblem) {
         const error: CustomError = new Error("Invalid contestId for this problem");
         error.statusCode = 400;
         throw error;
@@ -70,13 +76,20 @@ export const createSubmission = async ({
     result: "Pending"
   });
 
-  await submissionQueue.add("executeSubmission", {
-    submissionId: submission._id.toString(),
-    code,
-    language,
-    problemId: problemId.toString(),
-    queuedAt: Date.now()
-  });
+  try {
+    await submissionQueue.add("executeSubmission", {
+      submissionId: submission._id.toString(),
+      code,
+      language,
+      problemId: problemId.toString(),
+      queuedAt: Date.now()
+    });
+  } catch (_err) {
+    await Submission.findByIdAndDelete(submission._id);
+    const error: CustomError = new Error("Submission queue is unavailable");
+    error.statusCode = 503;
+    throw error;
+  }
 
   return submission;
 };

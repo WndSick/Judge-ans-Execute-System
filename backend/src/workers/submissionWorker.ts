@@ -17,6 +17,8 @@ function normalizeOutput(output: string): string {
     .trim();
 }
 
+console.log("Submission worker started and listening on 'submissionQueue'...");
+
 export const submissionWorker = new Worker(
   "submissionQueue",
   async (job: Job) => {

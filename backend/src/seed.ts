@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
-import Problem from "./models/Problem";
-import Contest from "./models/Contest";
+import Problem from "./models/Problem.js";
+import Contest from "./models/Contest.js";
 import dotenv from "dotenv";
 
 dotenv.config({ path: "../../.env" });

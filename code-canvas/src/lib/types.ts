@@ -42,3 +42,17 @@ export interface Submission {
   language?: string;
   createdAt?: string;
 }
+
+export type RunStatus = "success" | "wa" | "tle" | "re" | "ce" | "error";
+
+export interface RunResult {
+  status: RunStatus;
+  passed?: number;
+  total?: number;
+  runtime: number;
+  message?: string;
+  failedTestCaseIndex?: number;
+  input?: string;
+  expected?: string;
+  actual?: string;
+}

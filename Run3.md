@@ -1,93 +1,93 @@
-# Final Implementation Plan: "/run" Feature
+# Final Implementation Plan: "/run" Feature (Refined)
 
-This plan outlines the step-by-step implementation of the low-latency `/run` execution path, ensuring zero impact on the existing `/submit` flow.
+This plan outlines the hardened, implementation-ready strategy for the low-latency `/run` execution path. It ensures system stability, fair resource allocation, and robust error handling.
 
 ## 1. High-Level Architecture
-The `/run` feature bypasses the BullMQ queue and MongoDB persistence layers. It provides a **direct synchronous bridge** between the Node.js API and the Go Execution Service.
+The `/run` feature is a synchronous, queue-free path that acts as a direct proxy between the Node.js API and the Go Execution Service.
 
-*   **Isolation**: No jobs are added to Redis; no records are created in MongoDB.
-*   **Reusability**: Directly utilizes the existing `POST /execute` endpoint on the Go Executor (Port 8080).
-*   **Context**: Only operates on **Sample Test Cases** defined in the `Problem` model.
+*   **Isolation**: Operates independently of BullMQ and MongoDB persistence.
+*   **Target**: Executes code ONLY against **Sample Test Cases** defined in the `Problem` model.
+*   **Reusability**: Uses the existing Go Executor `POST /execute` endpoint.
 
 ## 2. Backend Implementation Plan
 
 ### Step 1: API Route
-Add a new protected route to `problemRoutes.ts`:
 *   **Endpoint**: `POST /problems/:id/run`
-*   **Middleware**: `authMiddleware` (Required to enforce per-user limits).
+*   **Middleware**: `authMiddleware` for user identification.
 
-### Step 2: Controller Logic
-1.  Verify `problemId` exists.
-2.  Fetch problem metadata: `title`, `examples` (for sample inputs), `timeLimit`, `memoryLimit`.
-3.  Validate payload: `code` and `language` must be present.
+### Step 2: Controller & Concurrency Control
+We implement a dual-layer in-memory semaphore (Global + Per-User) to prevent container explosion and resource exhaustion.
 
-### Step 3: Concurrency Control (Gatekeeper)
-To prevent "Container Explosion," we implement a two-layer in-memory semaphore in the API layer:
-*   **PER-USER limit**: `1` (A user cannot trigger a second run while the first is active).
-*   **GLOBAL limit**: `5` (The system will only handle 5 simultaneous "Run" requests across all users).
-*   **Enforcement**: If a limit is reached, return `429 Too Many Requests` with a "System is busy, please try again" message.
+*   **PER-USER limit**: `1` (One active run per user).
+*   **GLOBAL limit**: `5` (Maximum 5 concurrent `/run` containers system-wide).
+*   **Justification**: Each Docker container is capped at `0.5 CPU`. A global limit of 5 ensures that `/run` consumes at most `2.5 CPU` units, leaving significant overhead for the 4 dedicated `/submit` worker slots.
+*   **Failure Behavior**: If limits are reached, return `429 Too Many Requests` with the message: **"Too many run requests. Please wait a few seconds."**
 
-### Step 4: Execution Loop
-The controller will execute test cases **sequentially**:
-1.  Iterate through the `examples` array of the problem.
-2.  For each example:
-    *   Call Go Executor with `example.input`.
-    *   Wait for response.
-    *   If `status != "success"` OR `output != example.output` → **EXIT LOOP** immediately.
-3.  **Aggregate**: If all pass, return `Accepted`. Otherwise, return the result of the failing test case.
+### Step 3: Standardized Status Definition
+All responses from `/run` MUST use exactly one of the following status values to maintain consistency with the `/submit` system:
 
-### Step 5: Go Executor Integration
-*   **Payload**: Standard JSON matching `ExecuteRequest` (code, language, input, limits).
-*   **Request**: `axios.post("http://localhost:8080/execute", ...)`
-*   **No Changes**: The Go service remains untouched as it already handles Docker container isolation.
+| Status | Description |
+| :--- | :--- |
+| **success** | All sample test cases passed. |
+| **wa** | One or more sample test cases yielded the wrong output. |
+| **tle** | Execution exceeded the problem's time limit or 10s ceiling. |
+| **re** | Code crashed during execution (Runtime Error). |
+| **ce** | Code failed to compile. |
+| **error** | Internal system failure (Go service down, sandbox failed). |
 
-### Step 6: Timeout Handling
-*   **Per-request ceiling**: 10 seconds. 
-*   **Logic**: If the executor takes longer than 10s (or the problem's limit), Node.js will terminate the socket and return a "TLE" or "Request Timeout" to the frontend.
+### Step 4: Execution Strategy & Loop (Refined)
+Test cases MUST be executed **sequentially** with early exit and failure reporting.
 
-### Step 7: Error Handling
-*   **Executor Down**: Catch connection errors; return `503 Service Unavailable`.
-*   **Sandbox Failure**: Return `500 Internal Error` if Docker fails to initialize.
-*   **Code Error**: Map `ce` (Compile Error) or `re` (Runtime Error) directly to the response.
+**Execution Flow Snippet:**
+1.  **Acquire Slots**: Global and Per-User counters.
+2.  **Try Block**:
+    *   Iterate through problem `examples` (index `i`).
+    *   For each example:
+        *   **Execute**: Call Go Executor (Axios timeout 10s).
+        *   **Normalize**: Trim, normalize line endings, and remove trailing spaces.
+        *   **Evaluate**:
+            *   If `status != "success"` → **Break** with status (`re`, `ce`, or `tle`).
+            *   If `actual != expected` → **Break** with status `wa`.
+    *   **Capture Failure**: If a break occurred, store `failedTestCaseIndex: i`, `input`, `expected`, and `actual`.
+3.  **Finally Block**:
+    *   **CRITICAL**: Release Global and Per-User semaphore slots.
+
+### Step 5: API Response Structure
+
+**Success Example:**
+```json
+{
+  "status": "success",
+  "passed": 3,
+  "total": 3,
+  "runtime": 120
+}
+```
+
+**Failure Example:**
+```json
+{
+  "status": "wa",
+  "failedTestCaseIndex": 2, // 0-based
+  "input": "4\n2 7 11 15\n9",
+  "expected": "0 1",
+  "actual": "0 2",
+  "runtime": 90
+}
+```
 
 ---
 
 ## 3. Frontend Integration Plan
 
-### Run Button
-*   **Location**: Positioned next to the "Submit" button in the `ProblemDetail` header.
-*   **State**: Visual "Loading" state and `disabled` attribute while a request is in flight.
-
 ### UI Behavior
-*   **Instant Result**: Updates the `ResultPanel` with a temporary `submission` object (not from DB).
-*   **Components**: Displays `stdout`, `stderr`, and the specific sample test case result (Input/Expected/Actual).
-
-### No Persistence
-*   The "Run" result is kept in the React state only.
-*   Refreshing the page or navigating away clears the result.
+*   **Run Button**: Located next to "Submit". Disabled during execution.
+*   **Instant Result**: Display results in the `ResultPanel` using a temporary local state.
+*   **Failure Display**: If `failedTestCaseIndex` is present, highlight that specific case and show the diff.
+*   **No History**: Results are strictly transient.
 
 ---
 
 ## 4. Safety & System Protection
-*   **Starvation Prevention**: By limiting `/run` to 5 global slots, we ensure that at least 75% of the system's Docker capacity is available for the 4 primary `/submit` workers.
-*   **Memory/CPU**: Every container spawned by `/run` strictly inherits the `memoryLimit` and `0.5 CPU` cap from the problem specification.
-
----
-
-## 5. Edge Cases
-*   **Multiple Clicks**: Handled by frontend `disabled` state and backend per-user semaphore.
-*   **Spamming**: Rate-limited at the API level (Global Semaphore).
-*   **Partial Failure**: If the 2nd test case fails, the 1st success is acknowledged but the overall result is "Wrong Answer" (Early Exit).
-
----
-
-## 6. Final Flow (End-to-End)
-1.  **Frontend**: User clicks "Run".
-2.  **API**: Hits `POST /run`.
-3.  **Gate**: Checks if user has `0` active runs and system has `< 5` active runs.
-4.  **Fetch**: Retrieves `examples` from Problem DB.
-5.  **Run**: Calls Go Executor for `Example #1` → Success.
-6.  **Run**: Calls Go Executor for `Example #2` → Failure.
-7.  **Exit**: Controller stops execution.
-8.  **Response**: API returns failure details to Frontend.
-9.  **Display**: `ResultPanel` shows the error and output.
+*   **Reserved Capacity**: The Global limit of 5 preserves 75% of execution capacity for `/submit` workers.
+*   **Cleanup**: The mandatory `finally` block ensures slots are never leaked.

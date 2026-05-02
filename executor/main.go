@@ -8,11 +8,11 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 )
@@ -78,15 +78,21 @@ func executeHandler(w http.ResponseWriter, r *http.Request) {
 
 func processExecution(req ExecuteRequest) ExecuteResponse {
 	// 1. Create temporary directory
-	err := os.MkdirAll("/sandbox", 0777)
+	sandboxRoot := "./.sandbox"
+	err := os.MkdirAll(sandboxRoot, 0777)
 	if err != nil {
 		return ExecuteResponse{Status: "re", Error: "Failed to create sandbox dir", ExitCode: -1}
 	}
-	tmpDir, err := os.MkdirTemp("/sandbox", "sub-*")
+	tmpDir, err := os.MkdirTemp(sandboxRoot, "sub-*")
 	if err != nil {
 		return ExecuteResponse{Status: "re", Error: "Failed to create temp directory", ExitCode: -1}
 	}
 	defer os.RemoveAll(tmpDir) // Cleanup
+
+	absPath, err := filepath.Abs(tmpDir)
+	if err != nil {
+		return ExecuteResponse{Status: "re", Error: "Failed to get absolute path", ExitCode: -1}
+	}
 
 	// 2. Write code and input
 	var codeFileName string
@@ -108,46 +114,38 @@ func processExecution(req ExecuteRequest) ExecuteResponse {
 		return ExecuteResponse{Status: "re", Error: "Failed to write input", ExitCode: -1}
 	}
 
-	// 3. Compile (if C++)
-	if req.Language == "cpp" {
-		outPath := filepath.Join(tmpDir, "solution")
-		cmd := exec.Command("g++", "-O3", codePath, "-o", outPath)
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
-		if err := cmd.Run(); err != nil {
-			return ExecuteResponse{
-				Status: "ce",
-				Error:  stderr.String(),
-			}
-		}
-		// Ensure executable permissions
-		os.Chmod(outPath, 0755)
-	}
-
-	// 4. Execute in Docker
-	return runInDocker(req, tmpDir)
-}
-
-func runInDocker(req ExecuteRequest, tmpDir string) ExecuteResponse {
-	ctx := context.Background()
-
+	// 3. Prepare command
 	var image string
 	var cmd []string
 
 	if req.Language == "cpp" {
 		image = "gcc:latest"
-		cmd = []string{"sh", "-c", "./solution < input.txt"}
+		// Compile and run inside the container to ensure binary compatibility
+		cmd = []string{"sh", "-c", "g++ -O3 solution.cpp -o solution && ./solution < input.txt"}
 	} else {
 		image = "python:3.10-slim"
 		cmd = []string{"sh", "-c", "python3 solution.py < input.txt"}
 	}
+
+	// 4. Execute in Docker
+	return runInDocker(req, absPath, image, cmd)
+}
+
+func runInDocker(req ExecuteRequest, tmpDir string, image string, cmd []string) ExecuteResponse {
+	ctx := context.Background()
 
 	// Ensure image exists (in a real system, you'd pull it if missing, here we assume it's available or we pull it)
 	// For simplicity, we assume the host has the images or we pull them here.
 	// dockerClient.ImagePull(ctx, image, types.ImagePullOptions{})
 
 	hostConfig := &container.HostConfig{
-		Binds: []string{fmt.Sprintf("%s:/app", tmpDir)},
+		Mounts: []mount.Mount{
+			{
+				Type:   mount.TypeBind,
+				Source: tmpDir,
+				Target: "/app",
+			},
+		},
 		Resources: container.Resources{
 			Memory:   int64(req.MemoryLimit) * 1024 * 1024,
 			NanoCPUs: int64(0.5 * 1e9), // 0.5 CPU
@@ -176,7 +174,12 @@ func runInDocker(req ExecuteRequest, tmpDir string) ExecuteResponse {
 	}
 
 	// Wait for completion with timeout
-	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(req.TimeLimit)*time.Millisecond)
+	// For C++, we add a 5-second buffer for compilation
+	executionTimeout := req.TimeLimit
+	if req.Language == "cpp" {
+		executionTimeout += 5000
+	}
+	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(executionTimeout)*time.Millisecond)
 	defer cancel()
 
 	statusCh, errCh := dockerClient.ContainerWait(timeoutCtx, containerID, container.WaitConditionNotRunning)

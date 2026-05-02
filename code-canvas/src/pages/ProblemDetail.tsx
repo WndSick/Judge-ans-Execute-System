@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, ChevronDown, Loader2, RotateCcw, Send, AlertTriangle, Cpu } from "lucide-react";
+import { ArrowLeft, ChevronDown, Loader2, RotateCcw, Send, AlertTriangle, Cpu, Play } from "lucide-react";
 import { TopNav } from "@/components/TopNav";
 import { DifficultyBadge } from "@/components/DifficultyBadge";
 import { CodeEditor } from "@/components/CodeEditor";
 import { ResultPanel } from "@/components/ResultPanel";
-import { fetchProblem, fetchSubmission, submitCode } from "@/lib/api";
-import type { Language, Problem, Submission } from "@/lib/types";
+import { fetchProblem, fetchSubmission, runCode, submitCode } from "@/lib/api";
+import type { Language, RunResult, Submission } from "@/lib/types";
 import { toast } from "sonner";
 
 const LANGS: { value: Language; label: string }[] = [
@@ -28,6 +28,8 @@ const ProblemDetail = () => {
   const [code, setCode] = useState("");
 
   const [submission, setSubmission] = useState<Submission | undefined>();
+  const [runResult, setRunResult] = useState<RunResult | undefined>();
+  const [isRunning, setIsRunning] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const pollRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(0);
@@ -56,9 +58,10 @@ const ProblemDetail = () => {
   useEffect(() => () => { if (pollRef.current) window.clearInterval(pollRef.current); }, []);
 
   const handleSubmit = async () => {
-    if (!problem || isSubmitting) return;
+    if (!problem || isSubmitting || isRunning) return;
     setIsSubmitting(true);
     setSubmission(undefined);
+    setRunResult(undefined);
     startTimeRef.current = Date.now();
     
     try {
@@ -109,6 +112,31 @@ const ProblemDetail = () => {
     } catch (e: any) {
       setIsSubmitting(false);
       toast.error("Submission failed: " + e.message);
+    }
+  };
+
+  const handleRun = async () => {
+    if (!problem || isSubmitting || isRunning) return;
+    setIsRunning(true);
+    setSubmission(undefined);
+    setRunResult(undefined);
+
+    try {
+      const result = await runCode({
+        problemId: problem.id,
+        language: language as "cpp" | "python",
+        code
+      });
+      setRunResult(result);
+      if (result.status === "success") {
+        toast.success("All sample tests passed");
+      } else {
+        toast.error(`Run finished with status: ${result.status}`);
+      }
+    } catch (e: any) {
+      toast.error("Run failed: " + e.message);
+    } finally {
+      setIsRunning(false);
     }
   };
 
@@ -165,8 +193,16 @@ const ProblemDetail = () => {
             <RotateCcw className="h-3 w-3" /> Reset
           </button>
           <button
+            onClick={handleRun}
+            disabled={isSubmitting || isRunning}
+            className="flex h-8 items-center gap-2 rounded-lg border border-primary/40 bg-primary/10 px-4 text-[10px] font-bold uppercase tracking-widest text-primary transition-all hover:brightness-110 disabled:opacity-50"
+          >
+            {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+            {isRunning ? "Running" : "Run"}
+          </button>
+          <button
             onClick={handleSubmit}
-            disabled={isSubmitting}
+            disabled={isSubmitting || isRunning}
             className="flex h-8 items-center gap-2 rounded-lg bg-primary px-4 text-[10px] font-bold uppercase tracking-widest text-primary-foreground shadow-sm transition-all hover:brightness-110 disabled:opacity-50"
           >
             {isSubmitting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
@@ -245,7 +281,12 @@ const ProblemDetail = () => {
           </div>
 
           <div className="h-[35%] min-h-[260px] border-t border-border/40 bg-secondary/5">
-            <ResultPanel submission={submission} isSubmitting={isSubmitting} />
+            <ResultPanel
+              submission={submission}
+              runResult={runResult}
+              isRunning={isRunning}
+              isSubmitting={isSubmitting}
+            />
           </div>
         </section>
       </div>
